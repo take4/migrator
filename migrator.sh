@@ -406,24 +406,17 @@ query_source_images() {
       done
     done
   else
-    # check to see if a filter pattern was provided
-    if [ -z "${V1_REPO_FILTER}" ]
-    then
-      # no filter pattern was defined, get all repos
-      REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name') || catch_error "curl => API failure"
-    else
-      # filter pattern defined, use grep to match repos w/regex capabilites
-      REPO_LIST=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/search?q= | jq -r '.results | .[] | .name' | grep ${V1_REPO_FILTER} || true) || catch_error "curl => API failure"
-    fi
+
+    REPO_LIST=(`cat /tmp/v1_repo_list.txt`)
 
     # loop through all repos in v1 registry to get tags for each
-    for i in ${REPO_LIST}
+    for i in ${REPO_LIST[@]}
     do
       # get list of tags for image i
       IMAGE_TAGS=$(curl ${V1_OPTIONS} -sf ${V1_PROTO}://${AUTH_CREDS}@${V1_REGISTRY}/v1/repositories/${i}/tags | jq -r 'keys | .[]') || catch_error "curl => API failure"
 
       # loop through tags to create list of full image names w/tags
-      for j in ${IMAGE_TAGS}
+      for j in ${IMAGE_TAGS[@]}
       do
         # check if an image is a 'library' image without a namespace and LIBRARY_NAMESPACE is set to false
         if [ "${i:0:8}" = "library/" ] && [ "${LIBRARY_NAMESPACE}" = "false" ]
@@ -433,11 +426,12 @@ query_source_images() {
         fi
 
         # add image to list
-        FULL_IMAGE_LIST="${FULL_IMAGE_LIST} ${i}:${j}"
+        FULL_IMAGE_LIST=("${FULL_IMAGE_LIST} ${i}:${j}")
       done
     done
   fi
   echo -e "${OK} Successfully retrieved list of Docker images from ${V1_REGISTRY}"
+  echo ${FULL_IMAGE_LIST[@]}
 }
 
 # show list of images from docker hub or the v1 registry
@@ -445,7 +439,7 @@ show_source_image_list() {
   echo -e "\n${INFO} Full list of images from ${V1_REGISTRY} to be migrated:"
 
   # output list with v1 registry name prefix added
-  for i in ${FULL_IMAGE_LIST}
+  for i in ${FULL_IMAGE_LIST[@]}
   do
     echo ${V1_REGISTRY}/${i}
   done
@@ -529,7 +523,7 @@ pull_images_from_source() {
   LEN_FULL_IMAGE_LIST=$(count_list ${FULL_IMAGE_LIST})
 
   echo -e "\n${INFO} Pulling all images from ${V1_REGISTRY} to your local system"
-  for i in ${FULL_IMAGE_LIST}
+  for i in ${FULL_IMAGE_LIST[@]}
   do
     push_pull_image "pull" "${V1_REGISTRY}/${i}" ${COUNT_PULL} ${LEN_FULL_IMAGE_LIST}
     COUNT_PULL=$[$COUNT_PULL+1]
@@ -553,7 +547,7 @@ check_registry_swap_or_retag() {
     LEN_FULL_IMAGE_LIST=$(count_list ${FULL_IMAGE_LIST})
 
     echo -e "\n${INFO} Retagging all images from '${V1_REGISTRY}' to '${V2_REGISTRY}'"
-    for i in ${FULL_IMAGE_LIST}
+    for i in ${FULL_IMAGE_LIST[@]}
     do
       retag_image "${V1_REGISTRY}/${i}" "${V2_REGISTRY}/${i}" ${COUNT_RETAG} ${LEN_FULL_IMAGE_LIST}
       COUNT_RETAG=$[$COUNT_RETAG+1]
@@ -679,13 +673,13 @@ cleanup_local_engine() {
   # see if re-tagged images exist and remove accordingly
   if [ "${V1_REGISTRY}" = "${V2_REGISTRY}" ]
   then
-    for i in ${FULL_IMAGE_LIST}
+    for i in ${FULL_IMAGE_LIST[@]}
     do
       # remove docker image/tags; allow failures here (in case image is actually in use)
       remove_image "${V1_REGISTRY}/${i}"
     done
   else
-    for i in ${FULL_IMAGE_LIST}
+    for i in ${FULL_IMAGE_LIST[@]}
     do
       # remove docker image/tags; allow failures here (in case image is actually in use)
       remove_image "${V1_REGISTRY}/${i}"
